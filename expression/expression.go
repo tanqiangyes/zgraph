@@ -18,31 +18,12 @@ import (
 	"fmt"
 
 	"github.com/vescale/zgraph/parser/model"
+	"github.com/vescale/zgraph/stmtctx"
 	"github.com/vescale/zgraph/types"
 )
 
 // Row represents a row of data.
 type Row []types.Datum
-
-// Nullable represents a nullable value.
-type Nullable[T any] struct {
-	value *T
-}
-
-// IsNull returns true if the value is null.
-func (n *Nullable[T]) IsNull() bool {
-	return n.value == nil
-}
-
-// Get returns the value. It panics if the value is null.
-func (n *Nullable[T]) Get() T {
-	return *n.value
-}
-
-// Set sets the value.
-func (n *Nullable[T]) Set(value T) {
-	n.value = &value
-}
 
 type Expression interface {
 	fmt.Stringer
@@ -50,15 +31,7 @@ type Expression interface {
 	// Clone deeply clones an expression.
 	Clone() Expression
 	// Eval evaluates an expression through a row.
-	Eval(row Row) (types.Datum, error)
-	// EvalInt returns the int64 representation of the expression.
-	EvalInt(row Row) (Nullable[int64], error)
-	// EvalReal returns the float64 representation of the expression.
-	EvalReal(row Row) (Nullable[float64], error)
-	// EvalString returns the string representation of the expression.
-	EvalString(row Row) (Nullable[string], error)
-	// EvalDecimal returns the decimal representation of the expression.
-	EvalDecimal(row Row) (Nullable[*types.Decimal], error)
+	Eval(ctx *stmtctx.Context, row Row) (types.Datum, error)
 }
 
 // Assignment represents an assignment in INSERT/UPDATE statements.
