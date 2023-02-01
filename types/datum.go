@@ -16,6 +16,10 @@ package types
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
+
+	"github.com/cockroachdb/apd/v3"
 )
 
 // Kind represents the kind of datum.
@@ -34,6 +38,7 @@ const (
 	KindTime      Kind = 9
 	KindTimestamp Kind = 10
 	KindInterval  Kind = 11
+	KindGraphVar  Kind = 12
 )
 
 type KindPair struct {
@@ -46,10 +51,10 @@ func NewKindPair(first, second Kind) KindPair {
 }
 
 type Datum struct {
-	k Kind     // datum kind
-	i int64    // i can hold integer types, time, date, timestamp, interval
-	b []byte   // b can hold string, bytes
-	d *Decimal // d can hold decimal
+	k Kind   // datum kind
+	i int64  // i can hold integer types, time, date, timestamp, interval
+	b []byte // b can hold string, bytes
+	d any    // d can hold decimal, graphvar
 }
 
 func NewDatum(val any) Datum {
@@ -61,6 +66,12 @@ func NewDatum(val any) Datum {
 func NewStringDatum(val string) Datum {
 	var d Datum
 	d.SetString(val)
+	return d
+}
+
+func NewBoolDatum(val bool) Datum {
+	var d Datum
+	d.SetBool(val)
 	return d
 }
 
@@ -82,7 +93,7 @@ func (d *Datum) SetValue(val any) {
 		d.SetString(x)
 	case []byte:
 		d.SetBytes(x)
-	case *Decimal:
+	case *apd.Decimal:
 		d.SetDecimal(x)
 	case Date:
 		d.SetDate(x)
@@ -98,6 +109,8 @@ func (d *Datum) SetValue(val any) {
 		d.SetBytes(x)
 	case BitLiteral:
 		d.SetBytes(x)
+	case *GraphVar:
+		d.SetGraphVar(x)
 	default:
 		panic(fmt.Sprintf("unexpected literval type %T", val))
 	}
@@ -181,11 +194,11 @@ func (d *Datum) SetBytes(b []byte) {
 	d.b = b
 }
 
-func (d *Datum) GetDecimal() *Decimal {
-	return d.d
+func (d *Datum) GetDecimal() *apd.Decimal {
+	return d.d.(*apd.Decimal)
 }
 
-func (d *Datum) SetDecimal(dec *Decimal) {
+func (d *Datum) SetDecimal(dec *apd.Decimal) {
 	d.k = KindDecimal
 	d.d = dec
 }
@@ -224,4 +237,60 @@ func (d *Datum) GetInterval() Interval {
 func (d *Datum) SetInterval(i Interval) {
 	d.k = KindInterval
 	d.i = int64(i)
+}
+
+func (d *Datum) AsString() string {
+	switch d.k {
+	case KindNull:
+		return "NULL"
+	case KindBool:
+		if d.GetBool() {
+			return "TRUE"
+		} else {
+			return "FALSE"
+		}
+	case KindInt64:
+		return strconv.FormatInt(d.GetInt64(), 10)
+	case KindUint64:
+		return strconv.FormatUint(d.GetUint64(), 10)
+	case KindFloat64:
+		return strconv.FormatFloat(d.GetFloat64(), 'f', -1, 64)
+	case KindString:
+		return d.GetString()
+	case KindBytes:
+		return fmt.Sprintf("X'%X'", d.GetBytes())
+	case KindDecimal:
+		return d.GetDecimal().String()
+	case KindDate:
+		return d.GetDate().String()
+	case KindTime:
+		return d.GetTime().String()
+	case KindTimestamp:
+		return d.GetTimestamp().String()
+	case KindInterval:
+		return d.GetInterval().StringValue() + " " + d.GetInterval().Field().String()
+	case KindGraphVar:
+		return d.GetGraphVar().String()
+	default:
+		panic(fmt.Sprintf("unexpected datum kind %v", d.k))
+	}
+}
+
+type GraphVar struct {
+	ID         int64
+	Labels     []string
+	Properties map[string]Datum
+}
+
+func (v *GraphVar) String() string {
+	return fmt.Sprintf("GraphVar{ID: %d, Labels: %s}", v.ID, strings.Join(v.Labels, ", "))
+}
+
+func (d *Datum) GetGraphVar() *GraphVar {
+	return d.d.(*GraphVar)
+}
+
+func (d *Datum) SetGraphVar(v *GraphVar) {
+	d.k = KindGraphVar
+	d.d = v
 }

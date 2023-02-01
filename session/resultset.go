@@ -86,8 +86,12 @@ type queryResultSet struct {
 }
 
 func retrieveFields(schema *expression.Schema) []*Field {
-	// TODO: fill filed information
-	fields := make([]*Field, len(schema.Columns))
+	fields := make([]*Field, 0, len(schema.Columns))
+	for _, col := range schema.Columns {
+		fields = append(fields, &Field{
+			Name: col.Name.O,
+		})
+	}
 	return fields
 }
 
@@ -119,6 +123,10 @@ func (q *queryResultSet) Next(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if r == nil {
+		q.valid = false
+		return nil
+	}
 	q.row = r
 	return nil
 }
@@ -145,7 +153,7 @@ func (q *queryResultSet) Close() error {
 func assignField(field any, datum types.Datum) error {
 	switch f := field.(type) {
 	case *string:
-		*f = datum.GetString()
+		*f = datum.AsString()
 	case *int:
 		*f = int(datum.GetInt64())
 	case *int64:

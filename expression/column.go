@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 
+	"github.com/vescale/zgraph/parser/model"
 	"github.com/vescale/zgraph/stmtctx"
 	"github.com/vescale/zgraph/types"
 )
@@ -24,14 +25,20 @@ import (
 type Column struct {
 	// ID is the unique id of this column.
 	ID int64
+	// Name is the name of this column.
+	Name model.CIStr
 	// Index is used for execution, to tell the column's position in the given row.
 	Index int
+	// If set, this column is used internally, and should not be exposed to the user.
+	Hidden bool
 }
 
 func (c *Column) Clone() Expression {
 	return &Column{
-		ID:    c.ID,
-		Index: c.Index,
+		ID:     c.ID,
+		Name:   c.Name,
+		Index:  c.Index,
+		Hidden: c.Hidden,
 	}
 }
 
@@ -39,6 +46,6 @@ func (c *Column) String() string {
 	return fmt.Sprintf("Column#%d", c.ID)
 }
 
-func (c *Column) Eval(ctx *stmtctx.Context, row Row) (types.Datum, error) {
+func (c *Column) Eval(_ *stmtctx.Context, row Row) (types.Datum, error) {
 	return row[c.Index], nil
 }

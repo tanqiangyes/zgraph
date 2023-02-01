@@ -15,11 +15,16 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
-	"os"
+	"io"
+	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/knz/bubbline"
 	"github.com/spf13/cobra"
 	"github.com/vescale/zgraph"
 	"github.com/vescale/zgraph/session"
@@ -57,22 +62,112 @@ func main() {
 
 func interact(session *session.Session) {
 	fmt.Println("Welcome to zGraph interactive command line.")
-	for {
-		// TODO: scan text and execute it.
-		reader := bufio.NewReader(os.Stdin)
-		text, err := reader.ReadString('\n')
-		// if something goes wrong, just read newline.
-		if err != nil {
-			fmt.Println(err)
-			continue
+
+	m := bubbline.New()
+	m.Prompt = "zgraph> "
+	m.NextPrompt = "      > "
+	m.CheckInputComplete = func(input [][]rune, line, col int) bool {
+		inputLine := string(input[line])
+		if len(input) == 1 && strings.TrimSpace(inputLine) == "" {
+			return true
 		}
-		execute, err := session.Execute(context.Background(), text)
-		// is something goes wrong, just show error, and read newline.
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		// TODO: show result better
-		fmt.Println(execute)
+		return strings.Contains(inputLine, ";")
 	}
+
+	var lastStmt string
+	for {
+		m.Reset()
+		if _, err := tea.NewProgram(m).Run(); err != nil {
+			outputError(err)
+			continue
+		}
+
+		if m.Err != nil {
+			if m.Err == io.EOF {
+				// No more input.
+				break
+			}
+			if errors.Is(m.Err, bubbline.ErrInterrupted) {
+				// Entered Ctrl+C to cancel input.
+				fmt.Println("^C")
+			} else {
+				outputError(m.Err)
+			}
+			continue
+		}
+
+		input := lastStmt + m.Value()
+		stmts := strings.Split(input, ";")
+		for i := 0; i < len(stmts)-1; i++ {
+			stmt := strings.TrimSpace(stmts[i])
+			if stmt == "" {
+				continue
+			}
+			runQuery(session, stmt)
+		}
+		lastStmt = stmts[len(stmts)-1]
+	}
+}
+
+func runQuery(session *session.Session, query string) {
+	rs, err := session.Execute(context.Background(), query)
+	if err != nil {
+		outputError(err)
+		return
+	}
+	output, err := render(rs)
+	if err != nil {
+		outputError(err)
+		return
+	}
+	if len(output) > 0 {
+		fmt.Println(output)
+	}
+}
+
+func render(rs session.ResultSet) (string, error) {
+	defer rs.Close()
+	w := table.NewWriter()
+	w.Style().Format = table.FormatOptions{
+		Footer: text.FormatDefault,
+		Header: text.FormatDefault,
+		Row:    text.FormatDefault,
+	}
+
+	if len(rs.Fields()) > 0 {
+		var header []any
+		for _, field := range rs.Fields() {
+			header = append(header, field.Name)
+		}
+		w.AppendHeader(header)
+	}
+
+	fields := make([]any, 0, len(rs.Fields()))
+	for range rs.Fields() {
+		var s string
+		fields = append(fields, &s)
+	}
+
+	for {
+		if err := rs.Next(context.Background()); err != nil {
+			return "", err
+		}
+		if !rs.Valid() {
+			break
+		}
+		if err := rs.Scan(fields...); err != nil {
+			return "", err
+		}
+		var row []any
+		for _, f := range fields {
+			row = append(row, *f.(*string))
+		}
+		w.AppendRow(row)
+	}
+
+	return w.Render(), nil
+}
+
+func outputError(err error) {
+	fmt.Printf("Error: %v\n", err)
 }

@@ -18,6 +18,7 @@ import (
 	"strconv"
 
 	"github.com/vescale/zgraph/expression"
+	"github.com/vescale/zgraph/parser/model"
 )
 
 type Plan interface {
@@ -85,7 +86,6 @@ type baseSchemaProducer struct {
 	basePlan
 
 	schema *expression.Schema
-	names  []string
 }
 
 // Schema implements the Plan interface.
@@ -142,6 +142,7 @@ type physicalSchemaProducer struct {
 	basePhysicalPlan
 
 	schema *expression.Schema
+	names  []model.CIStr
 }
 
 // Schema implements the Plan.Schema interface.
